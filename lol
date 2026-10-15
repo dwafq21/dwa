@@ -47,6 +47,7 @@ local oldNames = {
     "BlehHubFlowerSnowOnly","BlehHubGamesMenuFlowerSnow","BlehHubGUIOnly",
 
     "BlehHubAppearanceOnly","BlehHubAppearanceOnlyFixed","ACECodeSniperUI","BlehHubAimbot",
+    "BlehHubToggleButtonGui",
 
 }
 
@@ -12430,7 +12431,166 @@ window.ClipsDescendants=true; window.ZIndex=1; window.Parent=gui
 
 addCorner(window,14); addStroke(window,COLORS.White,1,0.58)
 
+-- Compact floating Bleh Hub icon toggle (PC + mobile).
+-- Uses the supplied asset ID in thumbnail and direct-image formats.
+local toggleButton = Instance.new("ImageButton")
+toggleButton.Name = "BlehHubToggleButton"
+toggleButton.AnchorPoint = Vector2.new(0, 0)
+toggleButton.Position = UDim2.new(0, 12, 0.5, -22)
+toggleButton.Size = UDim2.fromOffset(44, 44)
+toggleButton.BackgroundColor3 = Color3.fromRGB(10, 10, 16)
+toggleButton.BackgroundTransparency = 0
+toggleButton.BorderSizePixel = 0
+toggleButton.Image = ""
+toggleButton.AutoButtonColor = false
+toggleButton.Active = true
+toggleButton.Selectable = false
+toggleButton.ZIndex = 1000
+toggleButton.Parent = gui
 
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 12)
+toggleCorner.Parent = toggleButton
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Color = Color3.fromRGB(130, 80, 255)
+toggleStroke.Thickness = 1.5
+toggleStroke.Transparency = 0.05
+toggleStroke.Parent = toggleButton
+
+-- Keep a small built-in fallback visible until the supplied icon loads.
+local toggleFallback = Instance.new("TextLabel")
+toggleFallback.Name = "IconFallback"
+toggleFallback.BackgroundTransparency = 1
+toggleFallback.Size = UDim2.fromScale(1, 1)
+toggleFallback.Position = UDim2.fromScale(0, 0)
+toggleFallback.Text = "D"
+toggleFallback.Font = Enum.Font.GothamBlack
+toggleFallback.TextSize = 30
+toggleFallback.TextColor3 = Color3.fromRGB(165, 105, 255)
+toggleFallback.TextStrokeColor3 = Color3.fromRGB(45, 20, 85)
+toggleFallback.TextStrokeTransparency = 0.15
+toggleFallback.ZIndex = toggleButton.ZIndex + 2
+toggleFallback.Active = false
+toggleFallback.Parent = toggleButton
+
+local toggleIcon = Instance.new("ImageLabel")
+toggleIcon.Name = "BlehHubIcon"
+toggleIcon.BackgroundTransparency = 1
+toggleIcon.BorderSizePixel = 0
+toggleIcon.Position = UDim2.fromOffset(3, 3)
+toggleIcon.Size = UDim2.new(1, -6, 1, -6)
+toggleIcon.Image = "rbxthumb://type=Asset&id=118465487400790&w=150&h=150"
+toggleIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+toggleIcon.ImageTransparency = 0
+toggleIcon.ScaleType = Enum.ScaleType.Fit
+toggleIcon.ZIndex = toggleButton.ZIndex + 3
+toggleIcon.Active = false
+toggleIcon.Parent = toggleButton
+
+-- Try Roblox's thumbnail URI first, then direct asset references. A number
+-- can still fail when it is not an image/decal or its permissions block use.
+task.spawn(function()
+    local ContentProvider = game:GetService("ContentProvider")
+    local candidates = {
+        "rbxthumb://type=Asset&id=118465487400790&w=150&h=150",
+        "rbxassetid://118465487400790",
+        "https://www.roblox.com/asset/?id=118465487400790",
+    }
+
+    for _, imageUri in ipairs(candidates) do
+        local loaded = false
+        toggleIcon.Image = imageUri
+        pcall(function()
+            ContentProvider:PreloadAsync({toggleIcon}, function(_, status)
+                if tostring(status):find("Success") then
+                    loaded = true
+                end
+            end)
+        end)
+        pcall(function()
+            if toggleIcon.IsLoaded then loaded = true end
+        end)
+        if loaded then
+            toggleFallback.Visible = false
+            return
+        end
+    end
+
+    -- Prevent a blank control if Roblox cannot serve the provided asset ID.
+    toggleIcon.Image = ""
+    toggleFallback.Visible = true
+end)
+
+local toggleDragging = false
+local toggleMoved = false
+local toggleDragInput = nil
+local toggleDragStart = nil
+local toggleButtonStart = nil
+local TOGGLE_DRAG_THRESHOLD = 6
+
+local function toggleMainWindow()
+    if window and window.Parent then
+        window.Visible = not window.Visible
+    end
+end
+
+local function moveToggleTo(inputPosition)
+    if not toggleDragStart or not toggleButtonStart then return end
+    local delta = inputPosition - toggleDragStart
+    if delta.Magnitude >= TOGGLE_DRAG_THRESHOLD then
+        toggleMoved = true
+    end
+    if not toggleMoved then return end
+
+    local camera = Workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+    local x = toggleButtonStart.X + delta.X
+    local y = toggleButtonStart.Y + delta.Y
+    x = math.clamp(x, 4, math.max(4, viewport.X - toggleButton.AbsoluteSize.X - 4))
+    y = math.clamp(y, 4, math.max(4, viewport.Y - toggleButton.AbsoluteSize.Y - 4))
+    toggleButton.Position = UDim2.fromOffset(x, y)
+end
+
+toggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    toggleDragging = true
+    toggleMoved = false
+    toggleDragInput = input
+    toggleDragStart = input.Position
+    toggleButtonStart = toggleButton.AbsolutePosition
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not toggleDragging or not toggleDragInput then return end
+    if toggleDragInput.UserInputType == Enum.UserInputType.MouseButton1
+        and input.UserInputType == Enum.UserInputType.MouseMovement then
+        moveToggleTo(input.Position)
+    elseif toggleDragInput.UserInputType == Enum.UserInputType.Touch
+        and input.UserInputType == Enum.UserInputType.Touch then
+        moveToggleTo(input.Position)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if not toggleDragging or not toggleDragInput then return end
+    local mouseReleased = toggleDragInput.UserInputType == Enum.UserInputType.MouseButton1
+        and input.UserInputType == Enum.UserInputType.MouseButton1
+    local touchReleased = toggleDragInput.UserInputType == Enum.UserInputType.Touch
+        and input.UserInputType == Enum.UserInputType.Touch
+    if not mouseReleased and not touchReleased then return end
+
+    toggleDragging = false
+    if not toggleMoved then
+        toggleMainWindow()
+    end
+    toggleDragInput = nil
+    toggleDragStart = nil
+    toggleButtonStart = nil
+end)
 
 -- Flower background
 
